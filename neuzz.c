@@ -1151,7 +1151,7 @@ static u32 choose_block_len(u32 limit) {
 
 }
 
-/* gradient guided mutation */
+/* gradient guided mutation 1.根据之前记录的输入的byte的梯度值，产生新的seed..2.通知fork_server产生一个子进程去以该seed为输入执行被测程序。3.通过随机的插入或删除一些byte产生新的seed */
 void gen_mutate(){
     int tmout_cnt = 0;
     
@@ -1200,7 +1200,7 @@ void gen_mutate(){
             }
 
             write_to_testcase(out_buf1, len);    
-            int fault = run_target(exec_tmout); 
+            int fault = run_target(exec_tmout); /* 2.通知fork_server产生一个子进程去以该seed为输入执行被测程序 */
             if (fault != 0){
                 if(fault == FAULT_CRASH){
                     char* mut_fn = alloc_printf("%s/crash_%d_%06d", "./crashes",round_cnt, mut_cnt);
@@ -1224,7 +1224,7 @@ void gen_mutate(){
                 }
             }
             /* save mutations that find new edges. */
-            int ret = has_new_bits(virgin_bits);
+            int ret = has_new_bits(virgin_bits);//原始的bits
             if(ret == 2){
                 char* mut_fn = alloc_printf("%s/id_%d_%d_%06d_cov", out_dir, round_cnt, iter, mut_cnt);
                 int mut_fd = open(mut_fn, O_WRONLY | O_CREAT | O_EXCL, 0600);
@@ -1303,7 +1303,7 @@ void gen_mutate(){
         }
     }
     
-    /* random insertion/deletion */
+    /* random insertion/deletion 3.通过随机的插入或删除一些byte产生新的seed */
     int cut_len = 0;
     int del_loc = 0;
     int rand_loc = 0;
@@ -1827,8 +1827,8 @@ void copy_seeds(char * in_dir, char * out_dir){
 
 /* parse the gradient to guide fuzzing */
 void fuzz_lop(char * grad_file, int sock){
-    dry_run("./splice_seeds/", 1); 
-    copy_file("gradient_info_p", grad_file);
+    dry_run("./splice_seeds/", 1); // splice_seeds中感兴趣的种子 保存到  out_dir 目录下。
+    copy_file("gradient_info_p", grad_file); //从gradient_info_p 拷贝到 grad_file文件中。
     FILE *stream = fopen(grad_file, "r");
     char *line = NULL;
     size_t llen = 0;
@@ -1841,9 +1841,9 @@ void fuzz_lop(char * grad_file, int sock){
     
     int retrain_interval = 1000;
     if(round_cnt == 0)
-        retrain_interval = 750;
+        retrain_interval = 750; //打到阈值以后，重新训练
     
-    while ((nread = getline(&line, &llen, stream)) != -1) {        
+    while ((nread = getline(&line, &llen, stream)) != -1) {   //每次读入一行。     
         line_cnt = line_cnt+1;
         
         /* send message to python module */
@@ -1911,7 +1911,7 @@ void start_fuzz(int f_len){
     /* connect to python module */    
     struct sockaddr_in address;
     int sock = 0;
-    struct sockaddr_in serv_addr;
+    struct sockaddr_in serv_addr; //说明本文件是自己是客户端
     if ((sock = socket(AF_INET, SOCK_STREAM, 0)) < 0){
         perror("Socket creation error");
         exit(0);
@@ -1944,7 +1944,7 @@ void start_fuzz(int f_len){
     
     len = f_len;
     /* dry run seeds*/
-    dry_run(out_dir, 2);
+    dry_run(out_dir, 2); //计算平均执行时间
     
     /* start fuzz */
     char buf[16];
@@ -2027,21 +2027,21 @@ void main(int argc, char*argv[]){
         printf("no manual...");
     }
     
-    setup_signal_handlers();
-    check_cpu_governor();
-    get_core_count();
-    bind_to_free_cpu();
-    setup_shm();
-    init_count_class16();
-    setup_dirs_fds();
+    setup_signal_handlers(); //设置信号处理程序
+    check_cpu_governor(); //检测CPU
+    get_core_count(); //获得核的个数
+    bind_to_free_cpu(); //空闲的CPU
+    setup_shm(); //设置共享内存shared memory
+    init_count_class16(); //初始化 全局bitmap大小：64kB
+    setup_dirs_fds(); //设置目录句柄
     if (!out_file) setup_stdio_file();
-    detect_file_args(argv + optind + 1);
+    detect_file_args(argv + optind + 1); /* Detect @@ in args. */
     setup_targetpath(argv[optind]);
     
     copy_seeds(in_dir, out_dir);
     init_forkserver(argv+optind);
    
-    start_fuzz(len);   
+    start_fuzz(len);   //开始fuzz
     printf("total execs %ld edge coverage %d.\n", total_execs, count_non_255_bytes(virgin_bits));
     return;
 }

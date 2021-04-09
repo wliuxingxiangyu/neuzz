@@ -15,7 +15,7 @@ import numpy as np
 import tensorflow as tf
 import keras.backend as K
 from collections import Counter
-from tensorflow import set_random_seed
+# from tensorflow import set_random_seed # tf 2.0
 from keras.models import Sequential
 from keras.layers import Dense, Dropout, Activation
 from keras.callbacks import ModelCheckpoint
@@ -31,7 +31,8 @@ round_cnt = 0
 seed = 12
 np.random.seed(seed)
 random.seed(seed)
-set_random_seed(seed)
+# set_random_seed(seed)
+tf.random.set_seed(seed)
 seed_list = glob.glob('./seeds/*')
 new_seeds = glob.glob('./seeds/id_*')
 SPLIT_RATIO = len(seed_list)
@@ -39,7 +40,7 @@ SPLIT_RATIO = len(seed_list)
 argvv = sys.argv[1:]
 
 
-# process training data from afl raw data
+# process training data from afl raw data #1.获取最大的文件大小值。2.利用afl-showmap获取每一个seeds的输出路径。3.去重，更新，保存。
 def process_data():
     global MAX_BITMAP_SIZE
     global MAX_FILE_SIZE
@@ -99,6 +100,7 @@ def process_data():
                 bitmap[idx][label.index((int(j)))] = 1
 
     # label dimension reduction
+    print("hz- len(bitmap): "+str( len(bitmap) ))
     fit_bitmap = np.unique(bitmap, axis=1)
     print("data dimension" + str(fit_bitmap.shape))
 
@@ -226,8 +228,8 @@ def splice_seed(fl1, fl2, idxx):
 # compute gradient for given input
 def gen_adv2(f, fl, model, layer_list, idxx, splice):
     adv_list = []
-    loss = layer_list[-2][1].output[:, f]
-    grads = K.gradients(loss, model.input)[0]
+    loss = layer_list[-2][1].output[:, f] #提取出下标为 f 的输出神经元的loss.
+    grads = K.gradients(loss, model.input)[0] #获取
     iterate = K.function([model.input], [loss, grads])
     ll = 2
     while fl[0] == fl[1]:
@@ -301,9 +303,9 @@ def gen_mutate2(model, edge_num, sign):
     else:
         new_seed_list = new_seeds
 
-    if len(new_seed_list) < edge_num:
+    if len(new_seed_list) < edge_num: #有放回的抽取
         rand_seed1 = [new_seed_list[i] for i in np.random.choice(len(new_seed_list), edge_num, replace=True)]
-    else:
+    else: #无放回的抽取
         rand_seed1 = [new_seed_list[i] for i in np.random.choice(len(new_seed_list), edge_num, replace=False)]
     if len(new_seed_list) < edge_num:
         rand_seed2 = [seed_list[i] for i in np.random.choice(len(seed_list), edge_num, replace=True)]
@@ -313,7 +315,7 @@ def gen_mutate2(model, edge_num, sign):
     # function pointer for gradient computation
     fn = gen_adv2 if sign else gen_adv3
 
-    # select output neurons to compute gradient
+    # select output neurons to compute gradient 挑选 神经网络的输出层神经元，来计算梯度
     interested_indice = np.random.choice(MAX_BITMAP_SIZE, edge_num)
     layer_list = [(layer.name, layer) for layer in model.layers]
 
@@ -330,9 +332,9 @@ def gen_mutate2(model, edge_num, sign):
             print("number of feature " + str(idxx))
             index = int(interested_indice[idxx])
             fl = [rand_seed1[idxx], rand_seed2[idxx]]
-            adv_list = fn(index, fl, model, layer_list, idxx, 1)
+            adv_list = fn(index, fl, model, layer_list, idxx, 1) # 
             tmp_list.append(adv_list)
-            for ele in adv_list:
+            for ele in adv_list: #将adv_list写入gradient_info_p文件中
                 ele0 = [str(el) for el in ele[0]]
                 ele1 = [str(int(el)) for el in ele[1]]
                 ele2 = ele[2]
@@ -373,11 +375,11 @@ def train(model):
 def gen_grad(data):
     global round_cnt
     t0 = time.time()
-    process_data()
+    process_data() #从afl中获取bitmap用于训练。1.获取最大的文件大小值。2.利用afl-showmap获取每一个seeds的输出路径。3.去重，更新，保存。
     model = build_model()
     train(model)
     # model.load_weights('hard_label.h5')
-    gen_mutate2(model, 500, data[:5] == b"train")
+    gen_mutate2(model, 500, data[:5] == b"train")#生成梯度信息，指导未来的 mutation..在输出层中挑选500个神经元。
     round_cnt = round_cnt + 1
     print(time.time() - t0)
 
@@ -386,7 +388,7 @@ def setup_server():
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     sock.bind((HOST, PORT))
     sock.listen(1)
-    conn, addr = sock.accept()
+    conn, addr = sock.accept() #一旦收到客户端的通信后，就执行下面的代码。
     print('connected by neuzz execution moduel ' + str(addr))
     gen_grad(b"train")
     conn.sendall(b"start")
@@ -396,7 +398,7 @@ def setup_server():
             break
         else:
             gen_grad(data)
-            conn.sendall(b"start")
+            conn.sendall(b"start") #发送TCP数据，通知客户端已生成梯度文件。
     conn.close()
 
 
